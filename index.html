@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            height: 100vh;
+            margin: 0;
+            padding: 10px;
+        }
+        
+        h1 {
+            margin-top: 5px;
+        }
+        
+        p {
+            text-align: center;
+            font-size: 12px;
+            margin: 0px;
+        }
+        
+        #scatterplot-container {
+            display: flex;
+            flex-direction: row;
+        }
+        
+        #scatterplot,
+        #legend {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        
+        #controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+        }
+        
+        .button-container {
+            margin: 5px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .button-container input[type="button"] {
+            padding: 5px 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        
+        #country-select {
+            padding: 5px;
+            font-size: 16px;
+        }
+        
+        #reset-button {
+            margin-left: 10px;
+        }
+        
+        #legend {
+            display: flex;
+            flex-direction: column;
+            margin-left: 20px;
+            font-size: 14px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 10px;
+            margin-right: 5px;
+        }
+        
+        #tooltip {
+            position: absolute;
+            visibility: hidden;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 5px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1 style="text-align: center;">Global University Teaching and Research Scores</h1>
+    <p style="text-align: center; font-size: 18px; margin-bottom: 0px;">
+        This scatterplot visualizes the scores of universities worldwide based on their Teaching and Research performance. Use the buttons to explore the scores for different years, and select a country to view top-performing universities in that country. Hover
+        over a data point to see more information about a specific university.
+    </p>
+    <div id="scatterplot-container">
+        <div id="scatterplot"></div>
+        <div id="legend" class="legend">
+        </div>
+    </div>
+    <div id="controls">
+        <div class="button-container">
+            <input type="button" value="2023" onclick="toggleData('2023')">
+        </div>
+        <div class="button-container">
+            <input type="button" value="2022" onclick="toggleData('2022')">
+        </div>
+        <div class="button-container">
+            <input type="button" value="2021" onclick="toggleData('2021')">
+        </div>
+        <div class="button-container">
+            <input type="button" value="2020" onclick="toggleData('2020')">
+        </div>
+        <div class="button-container">
+            <input type="button" value="2019" onclick="toggleData('2019')">
+        </div>
+        <div class="button-container">
+            <select id="country-select" onchange="updateCountryData()">
+                <option value="">Select a Country</option>
+            </select>
+        </div>
+        <div class="button-container">
+            <input type="button" value="Reset" id="reset-button" onclick="resetChart()">
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-annotation/2.5.1/d3-annotation.min.js"></script>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script>
+        let selectedYear = '2023';
+        let selectedCountry = '';
+        let scatterplotData = {};
+
+        //TO DO: there is one overlapping color in the legend. fix this if time permits
+        const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+
+        const margin = {
+            top: 60,
+            right: 80,
+            bottom: 80,
+            left: 60,
+        };
+        const width = 800 - margin.left - margin.right;
+        const height = 575 - margin.top - margin.bottom;
+
+        const svg = d3.select('#scatterplot')
+            .append('svg')
+            .attr('width', width + margin.left + margin.right)
+            .attr('height', height + margin.top + margin.bottom + 20)
+            .append('g')
+            .attr('transform', `translate(${margin.left + 20}, ${margin.top})`);
+
+        function toggleData(year) {
+            selectedYear = year;
+            d3.csv(`Times_${selectedYear}.csv`, (d) => ({
+                    name: d.name,
+                    year: selectedYear,
+                    scores_overall: +d.scores_overall,
+                    scores_teaching: +d.scores_teaching,
+                    scores_research: +d.scores_research,
+                    location: d.location,
+                }))
+                .then((data) => {
+                    scatterplotData[selectedYear] = data.slice(0, 50);
+
+                    const countries = [
+                        ...new Set(scatterplotData[selectedYear].map((d) => d.location)),
+                    ];
+
+                    const countrySelect = document.getElementById('country-select');
+                    countrySelect.innerHTML = '<option value="" >Select a Country</option>';
+                    countries.forEach((country) => {
+                        const option = document.createElement('option');
+                        option.value = country;
+                        option.textContent = country;
+                        countrySelect.appendChild(option);
+                    });
+
+                    updateScatterplot();
+                })
+                .catch((error) => {
+                    console.error('Error loading data:', error);
+                });
+        }
+
+        function resetChart() {
+            selectedYear = '2023';
+            selectedCountry = '';
+            document.getElementById('country-select').value = '';
+            updateScatterplot();
+        }
+
+        function updateCountryData(selectedCountry) {
+            selectedCountry = selectedCountry || document.getElementById('country-select').value;
+            console.log('Updated country:', selectedCountry);
+
+            const filteredData = scatterplotData[selectedYear].filter((d) => d.location === selectedCountry).slice(0, 50);
+
+            updateScatterplot(filteredData);
+        }
+
+        function updateScatterplot(data) {
+            svg.selectAll('*').remove();
+
+            const xScale = d3.scaleLinear()
+                .domain([50, 100])
+                .range([0, width]);
+
+            const yScale = d3.scaleLinear()
+                .domain([50, 100])
+                .range([height, 0]);
+
+            const tooltip = d3.select('body')
+                .append('div')
+                .attr('class', 'tooltip')
+                .style('position', 'absolute')
+                .style('visibility', 'hidden')
+                .style('background-color', 'rgba(0, 0, 0, 0.8)')
+                .style('color', '#fff')
+                .style('padding', '5px')
+                .style('border-radius', '5px')
+                .style('font-size', '12px');
+
+            svg.selectAll('circle')
+                .data(data || scatterplotData[selectedYear])
+                .enter()
+                .append('circle')
+                .attr('cx', (d) => xScale(d.scores_teaching))
+                .attr('cy', (d) => yScale(d.scores_research))
+                .attr('r', 5)
+                .style('fill', (d) => colorScale(d.location))
+                .on('mouseover', (event, d) => {
+                    tooltip.style('visibility', 'visible')
+                        .html(`<strong>${d.name}</strong><br>Country: ${d.location}<br>Overall Score: ${d.scores_overall}`)
+                        .style('left', `${event.pageX + 10}px`)
+                        .style('top', `${event.pageY - 10}px`);
+                })
+                .on('mouseout', () => {
+                    tooltip.style('visibility', 'hidden');
+                });
+
+            svg.append('g')
+                .attr('transform', `translate(0, ${height})`)
+                .call(d3.axisBottom(xScale));
+
+            svg.append('g')
+                .call(d3.axisLeft(yScale));
+
+            svg.append('text')
+                .attr('x', width / 2)
+                .attr('y', height + (margin.bottom / 2))
+                .attr('text-anchor', 'middle')
+                .text('Teaching Score');
+
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('x', -height / 2)
+                .attr('y', -margin.left)
+                .attr('text-anchor', 'middle')
+                .text('Research Score');
+
+            const legendDiv = document.getElementById('legend');
+            legendDiv.innerHTML = '';
+
+            const countries = [...new Set(scatterplotData[selectedYear].map((d) => d.location))];
+
+            countries.forEach((country) => {
+                const legendItem = document.createElement('div');
+                legendItem.className = 'legend-item';
+
+                const legendColor = document.createElement('div');
+                legendColor.className = 'legend-color';
+                legendColor.style.backgroundColor = colorScale(country);
+
+                const legendLabel = document.createElement('div');
+                legendLabel.textContent = country;
+
+                legendItem.appendChild(legendColor);
+                legendItem.appendChild(legendLabel);
+
+                legendDiv.appendChild(legendItem);
+            });
+
+            const legendHeight = legendDiv.offsetHeight;
+            svg.attr('height', Math.max(height + margin.top + margin.bottom, legendHeight));
+
+            d3.selectAll('.annotation-group').remove();
+
+            if (selectedYear === '2023') {
+                const annotations2023 = [{
+                    note: {
+                        title: 'Highly Ranked Universities',
+                        label: 'This group contains universities with high scores in both Teaching and Research.',
+                        wrap: 200,
+                    },
+                    connector: {
+                        end: 'arrow',
+                    },
+                    x: width - 110,
+                    y: 50,
+                    dx: -50,
+                    dy: 250,
+                }, ];
+
+                const annotation2023 = d3.annotation().type(d3.annotationCallout).annotations(annotations2023);
+                svg.append('g').attr('class', 'annotation-group').call(annotation2023);
+            } else if (selectedYear === '2022') {
+                const annotations2022 = [{
+                    note: {
+                        title: 'University of Tokyo',
+                        label: 'You may notice the University of Tokyo scored well in research and teaching metrics for this year' +
+                            'however, only have an overall score of 76. This is due to other factors that are not shown in this graph.',
+                        wrap: 200,
+                    },
+                    connector: {
+                        end: 'arrow',
+                    },
+                    x: width - 173,
+                    y: 105,
+                    dx: -10,
+                    dy: 140,
+                }, ];
+
+                const annotation2022 = d3.annotation().type(d3.annotationCallout).annotations(annotations2022);
+                svg.append('g').attr('class', 'annotation-group').call(annotation2022);
+            } else if (selectedYear === '2021') {
+                //This kinda works idk 
+                const lowestOverallScore2021 = scatterplotData['2021'].reduce((min, d) => (d.scores_overall < min ? d.scores_overall : min), Infinity);
+                const lowestOverallScoreData2021 = scatterplotData['2021'].find((d) => d.scores_overall === lowestOverallScore2021);
+                if (lowestOverallScoreData2021) {
+                    const annotations2021 = [{
+                        note: {
+                            title: 'Lowest Overall Score in 2021',
+                            label: `${lowestOverallScoreData2021.name}\nCountry: ${lowestOverallScoreData2021.location}\nOverall Score: ${lowestOverallScoreData2021.scores_overall}`,
+                            wrap: 200,
+                        },
+                        connector: {
+                            end: 'arrow',
+                        },
+                        x: xScale(lowestOverallScoreData2021.scores_teaching) + 10,
+                        y: yScale(lowestOverallScoreData2021.scores_research),
+                        dx: 150,
+                        dy: -20,
+                    }, ];
+
+                    const annotation2021 = d3.annotation().type(d3.annotationCallout).annotations(annotations2021);
+                    svg.append('g').attr('class', 'annotation-group').call(annotation2021);
+                }
+            } else if (selectedYear === '2020') {
+                const annotations2020 = [{
+                    note: {
+                        title: 'UIUC Best Year',
+                        label: 'With a score of 72.9, this is the University of Illinois\' best overall year.',
+                        wrap: 200,
+                    },
+                    connector: {
+                        end: 'arrow',
+                    },
+                    x: width - 475,
+                    y: 200,
+                    dx: 120,
+                    dy: 30,
+                }, ];
+
+                const annotation2020 = d3.annotation().type(d3.annotationCallout).annotations(annotations2020);
+                svg.append('g').attr('class', 'annotation-group').call(annotation2020);
+            } else if (selectedYear === '2019') {
+                const annotations2019 = [{
+                    note: {
+                        title: 'UIUC Worst Year',
+                        label: 'Conversely, with a score of 72.3, this is the University of Illinois\' worst year (tied with 2021).',
+                        wrap: 200,
+                    },
+                    connector: {
+                        end: 'arrow',
+                    },
+                    x: width - 480,
+                    y: 220,
+                    dx: 0,
+                    dy: -130,
+                }, ];
+
+                const annotation2019 = d3.annotation().type(d3.annotationCallout).annotations(annotations2019);
+                svg.append('g').attr('class', 'annotation-group').call(annotation2019);
+            }
+        }
+
+        toggleData('2023');
+    </script>
+</body>
+
+</html>
